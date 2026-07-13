@@ -1,0 +1,12 @@
+# Never upload secrets
+.env
+
+# Python junk files
+__pycache__/
+*.pyc
+
+# Mac junk files
+.DS_Store
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
