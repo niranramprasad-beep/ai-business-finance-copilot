@@ -65,3 +65,10 @@ Terms I've learned so far, in plain English. Updated as I go.
 **401 / 403 errors** — API rejections. 401 = "invalid credentials" (bad/dead key), 403 = "I know who you are but you're not allowed" (permissions problem).
 
 **rate limit** — the cap on how many API requests I can send per minute/day on a free tier. Hitting it means wait, not pay.
+
+## Python Data Types
+
+- **Integer (int):** A whole number with no decimal point. Example: 5, -3, 100
+- **Float:** A number with a decimal point. Example: 3.14, 21.6, 189.37
+- **Boolean (bool):** A value that can only be True or False. Used for yes/no logic.
+- **String (str):** Text wrapped in quotes. Example: "AAPL", "hello", "5"
