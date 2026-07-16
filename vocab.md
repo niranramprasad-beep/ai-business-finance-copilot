@@ -68,7 +68,7 @@ Terms I've learned so far, in plain English. Updated as I go.
 
 ## Python Data Types
 
-- **Integer (int):** A whole number with no decimal point. Example: 5, -3, 100
-- **Float:** A number with a decimal point. Example: 3.14, 21.6, 189.37
-- **Boolean (bool):** A value that can only be True or False. Used for yes/no logic.
-- **String (str):** Text wrapped in quotes. Example: "AAPL", "hello", "5"
+ **Integer (int):** A whole number with no decimal point. Example: 5, -3, 100
+**Float:** A number with a decimal point. Example: 3.14, 21.6, 189.37
+ **Boolean (bool):** A value that can only be True or False. Used for yes/no logic.
+**String (str):** Text wrapped in quotes. Example: "AAPL", "hello", "5"
