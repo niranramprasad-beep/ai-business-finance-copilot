@@ -3,4 +3,4 @@
 # whether the venv is activated in the current shell or a global Python/
 # streamlit install exists on PATH.
 cd "$(dirname "$0")"
-exec .venv/bin/streamlit run dashboard.py "$@"
+exec .venv/bin/streamlit run app.py "$@"
