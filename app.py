@@ -646,8 +646,8 @@ Using ONLY the facts given below, write 3 to 4 advice-driven insights as JSON. Q
 Formatting rule (critical): every dollar figure and percentage you mention MUST be copied character-for-character from the "value" fields below (same $, same commas, same one decimal place). Never round, abbreviate, truncate, or recompute a number yourself.
 
 Output shape: {{"insights": [{{"headline": "...", "detail": "..."}}, ...]}}
-- "headline": 2-5 words, a specific action, not a topic label.
-- "detail": ONE natural sentence, 18-30 words: name the specific action, then back it with the number(s) that justify it. Write like a sharp advisor talking, not a report reciting stats.
+- "headline": 2-5 words, punchy and scannable, built around an active verb -- a specific action, never a vague noun like "Overview" or "Summary" and never a topic label.
+- "detail": ONE short, decisive sentence, 18-30 words, shaped as "Do X because Y" -- lead with the specific action, not an observation. Never phrase it as "X is happening" or "X is worth noting"; a business owner should be able to go DO the first few words of the sentence. Keep sentences short and words plain -- no jargon, no finance-speak -- so a 10th grader could read it out loud in a demo and sound confident doing it. Back the action with the number(s) that justify it.
 - Prioritize the most surprising or non-obvious fact available (e.g. a customer or product that looks strong on revenue but is weak on margin/profit) over a generic "grow the leader" statement -- the reader can already see category/region totals on the chart, so don't just repeat those unless there's a real gap or margin problem attached.
 - Ban vague corporate filler with no concrete next step: phrases like "maximize potential", "significant opportunity", "moving forward", "drive growth", "leverage strengths" are not allowed. Every sentence needs one concrete, specific action a person could actually go do (e.g. "review the discount terms on this account", "run a price test", "audit the cost breakdown", "shift ad spend toward X") -- not an abstract goal.
 - Ground every recommendation only in the numbers given -- never invent a cause not in the data (e.g. don't claim to know WHY a margin is low, just flag it and recommend investigating or acting on it).
@@ -793,8 +793,8 @@ Using ONLY the facts given below, write 2 to 3 short insight sentences as JSON.
 Formatting rule (critical): every number you mention MUST be copied character-for-character from the "value" fields below (same $, same %, same decimal places). Never round, abbreviate, or recompute a number yourself.
 
 Output shape: {{"insights": [{{"headline": "...", "detail": "..."}}, ...]}}
-- "headline": 2-5 words summarizing the insight (e.g. "Short-Term Uptrend", "High Volatility").
-- "detail": ONE plain-English sentence, 15-30 words, explaining what the numbers mean -- trend direction, volatility level, or how the moving averages compare -- in a way a beginner investor would understand. Briefly unpack any jargon you use.
+- "headline": 2-5 words, punchy and scannable, built around an active verb (e.g. "Trending Higher", not "Uptrend Overview") -- never a vague noun like "Overview" or "Summary".
+- "detail": ONE plain-English sentence, 15-30 words. Lead with the single clearest takeaway first -- don't bury it after setup or context. Use short sentences, and explain any term (like "moving average" or "volatility") the moment you use it, not after. Write so a non-technical adult in the room understands what the number means the first time they hear it, with no need to re-read it.
 - Never mix a daily % change and a period % change in the same sentence without clearly labeling which is which (e.g. "up 3.5% today and 34.4% over the past 6 months") -- never state two bare percentages back to back.
 - Always name which moving average you mean ("20-day" or "50-day") whenever you cite one -- never say just "its moving averages" without saying which.
 - For volatility, give the reader a sense of scale using this general knowledge (background context, not one of the given facts): under ~20% annualized is relatively calm for a single stock, ~20-35% is moderate, above ~35% is high. Use it to describe the given volatility number as calm, moderate, or high -- do not invent a specific comparison number.
@@ -1297,8 +1297,8 @@ Using ONLY the facts given below, write exactly 3 insights as JSON.
 Formatting rule (critical): every number you mention MUST be copied character-for-character from the "value" fields below (same %, same counts, same decimal places). Never round, abbreviate, or recompute a number yourself.
 
 Output shape: {{"insights": [{{"headline": "...", "detail": "..."}}, ...]}}
-- "headline": 2-5 words summarizing the insight.
-- "detail": ONE plain-English sentence, 15-35 words.
+- "headline": 2-5 words, punchy and scannable, built around an active verb (e.g. "Fell Short of Baseline" or "Edged Out the Odds", not "Model Performance" or "Result Summary") -- never a vague noun like "Overview" or "Summary".
+- "detail": ONE plain-English sentence, 15-35 words. Lead with the single clearest takeaway first -- don't bury it after setup or context. Use short sentences, and explain any term (like "baseline" or "accuracy") the moment you use it, not after. Write so a non-technical adult in the room understands what the number means the first time they hear it, with no need to re-read it.
 - One insight must state plainly whether the model beat both baselines, one of them, or neither -- using only the "Did the Model Beat..." facts and the accuracy numbers given, never recomputed or guessed at.
 - One insight must explain, in simple age-appropriate terms, WHY beating these baselines is hard: if a pattern like this reliably worked, people would already be trading on it until that trading itself made the pattern disappear (the "efficient markets" idea) -- explain the idea plainly, don't just name-drop the term.
 - One insight must cover what this result does and doesn't prove: NEVER claim a real, repeatable trading edge was found even if the model beat both baselines here -- one company and a small test window is not proof of anything repeatable. If the model did NOT clear the baselines, frame that plainly as a legitimate, useful finding about how hard this problem is, not as a failure.
