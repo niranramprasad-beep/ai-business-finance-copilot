@@ -77,4 +77,4 @@ with st.expander("What am I looking at?"):
         "- 20-day avg: the average of the last 20 days — a smoothed short-term trend line.\n"
         "- 50-day avg: same idea but slower — the longer-term trend.\n"
         "- When the price is above both lines, the stock has been trending up recently."
-    )
+    ) 

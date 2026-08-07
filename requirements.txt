@@ -1,0 +1,10 @@
+streamlit>=1.59
+pandas>=3.0
+plotly>=6.9
+yfinance>=1.5
+python-dotenv>=1.2
+groq>=0.37
+google-genai>=2.14
+scikit-learn>=1.9
+feedparser>=6.0
+python-docx>=1.2

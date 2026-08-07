@@ -6,6 +6,7 @@
 import datetime
 import json
 import os
+import re
 
 import pandas as pd
 import plotly.express as px
@@ -16,6 +17,11 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types as genai_types
 from groq import Groq
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, mean_absolute_error
+from sklearn.model_selection import train_test_split
+from sklearn.tree import DecisionTreeClassifier
 
 # Keys live only in .env (gitignored) -- load_dotenv() reads them into the
 # process environment; nothing here ever hardcodes or prints a key.
@@ -203,12 +209,14 @@ def style_trend_chart(fig, show_legend, x_title="Month", y_title="Sales", y_tick
     return fig
 
 
-def style_bar_chart(fig, y_title):
+def style_bar_chart(fig, y_title, y_tickprefix="$", y_tickformat=",.0f"):
     # Same visual language as the trend chart above (recessive gridlines,
     # bigger axis text, transparent background) so the whole Charts section
     # reads as one consistent system rather than a mix of default Plotly
     # styling. Single-series bars, so no legend needed -- the axis labels
-    # already identify each bar.
+    # already identify each bar. y_tickprefix/y_tickformat default to the
+    # Business tab's dollar bars but are overridable for a non-dollar bar
+    # chart (e.g. a 0-1 feature-importance score).
     fig.update_traces(marker_color=single_line_color)
     fig.update_layout(
         font=dict(size=13, color=secondary_ink),
@@ -217,8 +225,8 @@ def style_bar_chart(fig, y_title):
         yaxis=dict(
             title=dict(text=y_title, font=dict(size=15)),
             tickfont=dict(size=13, color=muted_ink),
-            tickprefix="$",
-            tickformat=",.0f",
+            tickprefix=y_tickprefix,
+            tickformat=y_tickformat,
             showgrid=True,
             gridcolor=grid_color,
             gridwidth=1,
@@ -233,6 +241,99 @@ def style_bar_chart(fig, y_title):
     return fig
 
 
+# --- Shared AI-insight card ---
+# Same {headline, detail} shape everywhere (Business, Stock), so one card
+# renderer + one tone-coloring rule covers both instead of each section
+# hand-rolling its own st.container/st.markdown pair.
+
+# Slots into chart_palette -- no new hex values, just naming which existing
+# slot each tone borrows: aqua/green for good news, blue (the app's default
+# accent) for a plain informational insight, and amber/yellow -- the same
+# hue family Streamlit's own st.warning uses -- for anything cautionary.
+INSIGHT_TONE_PALETTE_SLOT = {"positive": 2, "neutral": 0, "caution": 3}
+
+
+def infer_insight_tone(headline: str, detail: str) -> str:
+    """Best-effort tone classification for card styling ONLY -- a lightweight
+    keyword/pattern heuristic that runs AFTER parse_insights() has already
+    returned clean {headline, detail} pairs. It never touches what's asked of
+    the LLM, how its output is parsed, or what gets cached -- purely a
+    rendering-time decision about which color left-border to draw. Good
+    enough to pick an accent color, not meant to be a real sentiment model.
+    """
+    text = f"{headline} {detail}".lower()
+    # A literal negative figure (e.g. "-$1,980.7" or "-7.9%") is a strong,
+    # unambiguous cue on its own regardless of the words around it.
+    has_negative_figure = bool(re.search(r"-\d", text))
+    caution_words = (
+        "unprofitable", "losing", "loss", "audit", "investigat", "review the", "declin", "risk", "warn",
+        "weak", "underperform", "concern", "high volatility", "did not", "didn't", "gone quiet",
+    )
+    positive_words = (
+        "leader", "leads", "top ", "strong", "grow", "increas", "outperform", "gain", "promote",
+        "double down", "uptrend", "beat", "high-margin", "high margin", "calm",
+    )
+    if has_negative_figure or any(word in text for word in caution_words):
+        return "caution"
+    if any(word in text for word in positive_words):
+        return "positive"
+    return "neutral"
+
+
+def render_insight_card(col, insight: dict, eyebrow: str, index: int):
+    """Render one AI-generated insight as a tone-colored card. Still a real
+    st.container(border=True) -- Streamlit doesn't expose a border-color
+    param, so the colored left accent + tint comes from a tiny scoped
+    <style> block targeting this container's key (`.st-key-<key>`, a
+    stable class Streamlit generates from the `key=` argument), injected via
+    st.html right before the container it styles. color-mix(...,transparent)
+    keeps the tint subtle and correct on both themes without hardcoding two
+    separate background colors.
+    """
+    tone = infer_insight_tone(insight["headline"], insight["detail"])
+    tone_color = chart_palette[INSIGHT_TONE_PALETTE_SLOT[tone]]
+    key = f"insight-{eyebrow.lower().replace(' ', '-')}-{index}"
+    tint_pct = 14 if is_dark_theme else 8  # a flat tint reads lighter on a dark surface, so it gets a bit more
+
+    with col:
+        st.html(f"""<style>
+.st-key-{key} {{
+    border-left: 4px solid {tone_color} !important;
+    background: color-mix(in srgb, {tone_color} {tint_pct}%, transparent) !important;
+}}
+</style>""")
+        with st.container(border=True, key=key):
+            st.caption(eyebrow.upper())
+            st.markdown(f"##### :material/lightbulb: {insight['headline']}")
+            st.write(insight["detail"])
+
+
+# --- Shared Superstore loader ---
+# @st.cache_data is Streamlit-specific: Streamlit reruns your ENTIRE script top-to-bottom
+# every time a user touches a widget (a filter, a dropdown, etc). Without caching, that
+# means re-reading and re-parsing the CSV from disk on every single click.
+# This decorator tells Streamlit: "run this function once, remember the result, and
+# reuse it as long as the CSV file/args haven't changed." Module-level (not nested inside
+# render_business_dashboard) so the Churn Radar and Sales Forecast tabs can reuse the exact
+# same cleaned data and precomputed "Order Month" column instead of re-reading the CSV.
+@st.cache_data
+def load_data():
+    df = pd.read_csv("superstore.csv")
+    # This CSV has extra rows tacked on below the real order data (looks like a
+    # "Returns"/"People" sheet from the original Excel workbook got appended to the
+    # "Orders" sheet during export). Those junk rows have non-numeric Row ID values
+    # ("Yes", a person's name, etc) and blank Order Date/Region/etc. Keep only rows
+    # where Row ID is a real number.
+    df = df[pd.to_numeric(df["Row ID"], errors="coerce").notna()].copy()
+    df["Order Date"] = pd.to_datetime(df["Order Date"])
+    # Precompute this here, inside the cached function, not later in the script --
+    # anything inside load_data() only runs once and gets reused on every rerun.
+    # If we computed this after calling load_data(), it would recalculate on every
+    # single filter click since it'd be outside the cache boundary.
+    df["Order Month"] = df["Order Date"].dt.to_period("M").dt.to_timestamp()
+    return df
+
+
 # =============================================================================
 # Business Performance Dashboard (tab 1)
 # =============================================================================
@@ -240,29 +341,6 @@ def style_bar_chart(fig, y_title):
 
 def render_business_dashboard():
     st.header("Business Performance Dashboard")
-
-    # --- Data loading ---
-    # @st.cache_data is Streamlit-specific: Streamlit reruns your ENTIRE script top-to-bottom
-    # every time a user touches a widget (a filter, a dropdown, etc). Without caching, that
-    # means re-reading and re-parsing the CSV from disk on every single click.
-    # This decorator tells Streamlit: "run this function once, remember the result, and
-    # reuse it as long as the CSV file/args haven't changed."
-    @st.cache_data
-    def load_data():
-        df = pd.read_csv("superstore.csv")
-        # This CSV has extra rows tacked on below the real order data (looks like a
-        # "Returns"/"People" sheet from the original Excel workbook got appended to the
-        # "Orders" sheet during export). Those junk rows have non-numeric Row ID values
-        # ("Yes", a person's name, etc) and blank Order Date/Region/etc. Keep only rows
-        # where Row ID is a real number.
-        df = df[pd.to_numeric(df["Row ID"], errors="coerce").notna()].copy()
-        df["Order Date"] = pd.to_datetime(df["Order Date"])
-        # Precompute this here, inside the cached function, not later in the script --
-        # anything inside load_data() only runs once and gets reused on every rerun.
-        # If we computed this after calling load_data(), it would recalculate on every
-        # single filter click since it'd be outside the cache boundary.
-        df["Order Month"] = df["Order Date"].dt.to_period("M").dt.to_timestamp()
-        return df
 
     df = load_data()
 
@@ -592,11 +670,8 @@ Facts:
         with st.spinner("Generating insights..."):
             ai_insights = generate_business_insights(facts_json)
         cols = st.columns(len(ai_insights))
-        for col, insight in zip(cols, ai_insights):
-            with col:
-                with st.container(border=True):
-                    st.markdown(f"**:material/lightbulb: {insight['headline']}**")
-                    st.write(insight["detail"])
+        for i, (col, insight) in enumerate(zip(cols, ai_insights)):
+            render_insight_card(col, insight, "Business Insight", i)
     except Exception as e:
         st.error(f"Couldn't generate AI insights right now: {e}")
 
@@ -746,11 +821,8 @@ def render_stock_ai_insights(facts: list):
         with st.spinner("Generating insights..."):
             ai_insights = generate_stock_insights(facts_json)
         cols = st.columns(len(ai_insights))
-        for col, insight in zip(cols, ai_insights):
-            with col:
-                with st.container(border=True):
-                    st.markdown(f"**:material/lightbulb: {insight['headline']}**")
-                    st.write(insight["detail"])
+        for i, (col, insight) in enumerate(zip(cols, ai_insights)):
+            render_insight_card(col, insight, "Market Insight", i)
     except Exception as e:
         st.error(f"Couldn't generate AI insights right now: {e}")
 
@@ -895,13 +967,478 @@ def render_compare_stocks_view(period_label, period_days):
 
 
 # =============================================================================
-# Tabs -- both dashboards live in this one app, one script, one file.
+# Churn Radar (tab 3)
 # =============================================================================
 
-tab1, tab2 = st.tabs([":material/store: Business Performance", ":material/candlestick_chart: Stock Market"])
+# Superstore has no explicit churn column, so one is derived from recency: a
+# customer is "churned" if their most recent order is more than this many
+# days before the last order date anywhere in the dataset. 180 days (~6
+# months) is a common real-world "gone quiet" cutoff for a retail business,
+# and empirically lands this dataset at a ~25% churn rate -- enough churned
+# examples for a classifier to learn from, without being so rare (or so
+# common) that the label is nearly useless.
+CHURN_RECENCY_THRESHOLD_DAYS = 180
+CHURN_FEATURE_COLS = ["Total Orders", "Total Sales", "Total Profit", "Avg Discount", "Total Quantity", "Tenure Days", "Avg Order Value"]
+
+
+@st.cache_data
+def build_churn_dataset() -> pd.DataFrame:
+    """Roll the order-line-level Superstore data up to one row per customer,
+    with RFM-style features (recency/frequency/monetary) and a derived churn
+    label. Recency itself is deliberately EXCLUDED from CHURN_FEATURE_COLS
+    below -- it's what defines the label, so training on it would be circular
+    (the model would just learn "Recency > 180 -> churned", which isn't a
+    real prediction, it's reading the label off itself).
+    """
+    df = load_data()
+    max_date = df["Order Date"].max()
+
+    customers = df.groupby("Customer ID", as_index=False).agg(**{
+        "Customer Name": ("Customer Name", "first"),
+        "Last Order Date": ("Order Date", "max"),
+        "First Order Date": ("Order Date", "min"),
+        "Total Orders": ("Order ID", "nunique"),
+        "Total Sales": ("Sales", "sum"),
+        "Total Profit": ("Profit", "sum"),
+        "Avg Discount": ("Discount", "mean"),
+        "Total Quantity": ("Quantity", "sum"),
+    })
+    customers["Recency Days"] = (max_date - customers["Last Order Date"]).dt.days
+    customers["Tenure Days"] = (max_date - customers["First Order Date"]).dt.days
+    customers["Avg Order Value"] = customers["Total Sales"] / customers["Total Orders"]
+    customers["Churned"] = (customers["Recency Days"] > CHURN_RECENCY_THRESHOLD_DAYS).astype(int)
+    return customers
+
+
+@st.cache_data(show_spinner="Training churn models...")
+def train_churn_models(customers: pd.DataFrame) -> dict:
+    """Train a Decision Tree and a Random Forest on the same train/test split
+    so their accuracy is directly comparable, then score every customer (not
+    just the held-out test set) with the Random Forest for the "Customers to
+    Call First" table -- the test split is for honestly measuring accuracy,
+    but the actual retention list should cover the whole customer base.
+    Cached on the `customers` DataFrame: same input data + the fixed
+    random_state below always produces the same models, so this only
+    actually retrains once.
+    """
+    X = customers[CHURN_FEATURE_COLS]
+    y = customers["Churned"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    dt = DecisionTreeClassifier(max_depth=6, random_state=42)
+    dt.fit(X_train, y_train)
+    dt_accuracy = accuracy_score(y_test, dt.predict(X_test))
+
+    rf = RandomForestClassifier(n_estimators=200, max_depth=8, random_state=42)
+    rf.fit(X_train, y_train)
+    rf_pred = rf.predict(X_test)
+    rf_accuracy = accuracy_score(y_test, rf_pred)
+
+    # Honest baseline: the accuracy you'd get by always guessing the majority
+    # class ("not churned") without looking at any features at all. A model
+    # that doesn't clear this bar isn't actually learning anything useful.
+    baseline_accuracy = max(y_test.mean(), 1 - y_test.mean())
+
+    return {
+        "dt_accuracy": dt_accuracy,
+        "rf_accuracy": rf_accuracy,
+        "baseline_accuracy": baseline_accuracy,
+        "confusion_matrix": confusion_matrix(y_test, rf_pred, labels=[0, 1]),
+        "feature_importances": pd.Series(rf.feature_importances_, index=CHURN_FEATURE_COLS).sort_values(ascending=False),
+        "all_probabilities": rf.predict_proba(X)[:, 1],
+    }
+
+
+def render_churn_radar_dashboard():
+    st.header("Churn Radar")
+    st.caption(
+        f"Superstore has no built-in churn label, so one is derived here: a customer is marked "
+        f"**churned** if their most recent order was more than {CHURN_RECENCY_THRESHOLD_DAYS} days "
+        f"before the last order date in the whole dataset."
+    )
+
+    customers = build_churn_dataset()
+    results = train_churn_models(customers)
+
+    st.subheader("Model Comparison")
+    model_col1, model_col2 = st.columns(2)
+    model_col1.metric(":material/account_tree: Decision Tree Accuracy", fmt_pct(results["dt_accuracy"] * 100), border=True)
+    model_col2.metric(":material/forest: Random Forest Accuracy", fmt_pct(results["rf_accuracy"] * 100), border=True)
+    st.caption(
+        f"For context: always guessing \"not churned\" for every customer would score "
+        f"{fmt_pct(results['baseline_accuracy'] * 100)} accuracy on this same test set -- a model "
+        f"needs to clear that bar to be worth using, not just post a big-sounding number."
+    )
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.markdown("**Confusion Matrix (Random Forest)**")
+        cm = results["confusion_matrix"]
+        # A heatmap doesn't fit style_bar_chart/style_trend_chart's shape (both
+        # assume one value axis against one category/time axis), so it's
+        # hand-styled here using the same tokens (palette, ink, transparent
+        # background) rather than raw Plotly defaults.
+        fig_cm = go.Figure(
+            data=go.Heatmap(
+                z=cm,
+                x=["Predicted Active", "Predicted Churned"],
+                y=["Actual Active", "Actual Churned"],
+                colorscale=[[0, "rgba(0,0,0,0)"], [1, chart_palette[0]]],
+                text=cm,
+                texttemplate="%{text}",
+                textfont=dict(size=22, color=secondary_ink),
+                showscale=False,
+                xgap=3,
+                ygap=3,
+            )
+        )
+        fig_cm.update_layout(
+            font=dict(size=13, color=secondary_ink),
+            xaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False),
+            yaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False, autorange="reversed"),
+            margin=dict(t=20),
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_cm, use_container_width=True)
+        st.caption("Rows are what actually happened, columns are what the model predicted.")
+
+    with chart_col2:
+        importance_df = results["feature_importances"].reset_index()
+        importance_df.columns = ["Feature", "Importance"]
+        # An explicit, non-empty title (matching the pattern the other bar
+        # charts in this file already use) instead of a separate st.markdown
+        # header -- a Plotly figure with no title text renders a stray
+        # "undefined" in its place once style_bar_chart's update_layout call
+        # touches the title's font.
+        fig_importance = px.bar(importance_df.head(10), x="Feature", y="Importance", title="Top Churn Drivers")
+        st.plotly_chart(style_bar_chart(fig_importance, "Importance", y_tickprefix="", y_tickformat=".0%"), use_container_width=True)
+
+    st.subheader("Customers to Call First")
+    st.caption("Currently-active customers ranked by predicted churn risk -- an early-warning list, not customers who've already gone quiet.")
+    scored = customers.copy()
+    scored["Churn Probability"] = results["all_probabilities"] * 100
+    to_call = scored[scored["Churned"] == 0].sort_values("Churn Probability", ascending=False).head(15)[
+        ["Customer Name", "Recency Days", "Total Orders", "Total Sales", "Total Profit", "Churn Probability"]
+    ].reset_index(drop=True)
+    to_call.index += 1
+    to_call.index.name = "Rank"
+
+    st.dataframe(
+        to_call,
+        column_config={
+            "Total Sales": st.column_config.NumberColumn("Total Sales", format="$%.2f"),
+            "Total Profit": st.column_config.NumberColumn("Total Profit", format="$%.2f"),
+            "Churn Probability": st.column_config.NumberColumn("Churn Probability", format="%.1f%%"),
+        },
+        use_container_width=True,
+    )
+
+
+# =============================================================================
+# Sales Forecast (tab 4)
+# =============================================================================
+
+FORECAST_LAGS = [1, 2, 3]
+FORECAST_TEST_MONTHS = 6
+
+
+@st.cache_data(show_spinner="Fitting forecast model...")
+def build_sales_forecast() -> dict:
+    """Build lag features from the monthly sales series and fit a plain linear
+    regression against a naive "same as last month" baseline. The split is
+    chronological (last FORECAST_TEST_MONTHS months held out), not a random
+    train_test_split -- shuffling months would let the model "forecast" a
+    month using data that (in a real forecast) wouldn't exist yet.
+    """
+    df = load_data()
+    monthly = df.groupby("Order Month", as_index=False)["Sales"].sum().sort_values("Order Month").reset_index(drop=True)
+
+    lagged = monthly.copy()
+    for lag in FORECAST_LAGS:
+        lagged[f"Lag {lag}"] = lagged["Sales"].shift(lag)
+    lagged = lagged.dropna().reset_index(drop=True)
+
+    lag_cols = [f"Lag {lag}" for lag in FORECAST_LAGS]
+    train = lagged.iloc[:-FORECAST_TEST_MONTHS]
+    test = lagged.iloc[-FORECAST_TEST_MONTHS:].copy()
+
+    model = LinearRegression()
+    model.fit(train[lag_cols], train["Sales"])
+    test["Forecast"] = model.predict(test[lag_cols])
+    test["Naive Baseline"] = test["Lag 1"]  # "next month = same as last month"
+
+    return {
+        "monthly": monthly,
+        "test": test,
+        "model_mae": mean_absolute_error(test["Sales"], test["Forecast"]),
+        "naive_mae": mean_absolute_error(test["Sales"], test["Naive Baseline"]),
+        "months_used": len(lagged),
+    }
+
+
+def render_sales_forecast_dashboard():
+    st.header("Sales Forecast")
+    st.caption(f"A simple linear regression on the last {len(FORECAST_LAGS)} months of sales, evaluated against a naive \"same as last month\" baseline over the most recent {FORECAST_TEST_MONTHS} months.")
+
+    results = build_sales_forecast()
+    test = results["test"]
+    model_wins = results["model_mae"] < results["naive_mae"]
+
+    col1, col2 = st.columns(2)
+    col1.metric(":material/model_training: Model MAE", fmt_money(results["model_mae"]), border=True)
+    col2.metric(":material/rule: Naive Baseline MAE", fmt_money(results["naive_mae"]), border=True)
+
+    # MAE (mean absolute error) is in dollars, same units as sales -- lower is
+    # better. Reported honestly either way: this dataset has a small number of
+    # months and strong holiday seasonality a 3-month-lag linear model doesn't
+    # capture well, so the naive baseline sometimes wins, and that result is
+    # shown as-is rather than only reported when the model happens to win.
+    # strip_markdown escapes "$" -- any two dollar-prefixed figures in one
+    # string are otherwise treated as a pair of LaTeX math delimiters by
+    # Streamlit's markdown renderer, silently eating both "$" signs and
+    # rendering the text between them as an equation (the same bug fixed
+    # earlier in the AI insight cards, but it applies to any st.markdown-family
+    # text, hand-written or LLM-generated).
+    if model_wins:
+        st.success(strip_markdown(f"The model beat the naive baseline on this test window ({fmt_money(results['model_mae'])} vs {fmt_money(results['naive_mae'])} average error)."))
+    else:
+        st.warning(strip_markdown(f"The naive baseline actually beat the model on this test window ({fmt_money(results['naive_mae'])} vs {fmt_money(results['model_mae'])} average error) -- see the caveats below for why."))
+
+    monthly = results["monthly"]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=monthly["Order Month"], y=monthly["Sales"], name="Actual", mode="lines", line=dict(color=chart_palette[0], width=2)))
+    fig.add_trace(go.Scatter(x=test["Order Month"], y=test["Forecast"], name="Model Forecast", mode="lines+markers", line=dict(color=chart_palette[1], width=2, dash="dash")))
+    fig.add_trace(go.Scatter(x=test["Order Month"], y=test["Naive Baseline"], name="Naive Baseline", mode="lines+markers", line=dict(color=chart_palette[2], width=2, dash="dot")))
+    fig.update_layout(title="Monthly Sales: Actual vs Forecast")
+    st.plotly_chart(style_trend_chart(fig, show_legend=True, x_title="Month", y_title="Sales"), use_container_width=True)
+
+    st.subheader("Caveats")
+    st.info(
+        f"""
+- **Small data size** -- this forecast is fit on only {results['months_used']} months of history, with just {FORECAST_TEST_MONTHS} months held out to test on. That's not enough data for the model to reliably separate a real pattern from noise.
+- **Seasonality** -- sales spike sharply around the holidays every year. A model that only looks at the last {len(FORECAST_LAGS)} months has no way to know "December is always big" -- it only sees recent numbers, not the time of year.
+- **Unforeseen events** -- no model trained on past sales can see a supply shortage, a new competitor, a marketing campaign, or a economic shift coming. Every forecast here is "if the future looks like the recent past," which is never guaranteed.
+"""
+    )
+
+
+# =============================================================================
+# The Prediction Experiment (tab 5)
+# =============================================================================
+
+PREDICTION_FEATURE_COLS = ["Daily Return", "Return MA5", "Return MA10", "MA20 Above MA50"]
+PREDICTION_TEST_FRACTION = 0.2
+
+
+@st.cache_data(show_spinner="Training prediction model...")
+def build_prediction_experiment(ticker: str) -> dict:
+    """Engineer next-day-direction features from one ticker's cached price
+    history (load_stock_history is already @st.cache_data'd, so this only
+    re-touches yfinance if that cache has expired) and evaluate a Random
+    Forest against two baselines on a chronological holdout. The split is by
+    date, not train_test_split's random shuffle -- shuffling days would let
+    the model "predict" a day using information from days that come after it,
+    which could never happen in a real forecast.
+    """
+    hist = load_stock_history(ticker).copy()
+    hist["Daily Return"] = hist["Close"].pct_change()
+    hist["Return MA5"] = hist["Daily Return"].rolling(5).mean()
+    hist["Return MA10"] = hist["Daily Return"].rolling(10).mean()
+    hist["MA20 Above MA50"] = (hist["MA20"] > hist["MA50"]).astype(int)
+    # Tomorrow's direction, known only in hindsight -- this is the target,
+    # never a feature the model gets to see.
+    hist["Target"] = (hist["Close"].shift(-1) > hist["Close"]).astype(int)
+    hist = hist.dropna().reset_index(drop=True)
+
+    test_size = max(int(len(hist) * PREDICTION_TEST_FRACTION), 10)
+    train = hist.iloc[:-test_size]
+    test = hist.iloc[-test_size:]
+
+    model = RandomForestClassifier(n_estimators=200, max_depth=5, random_state=42)
+    model.fit(train[PREDICTION_FEATURE_COLS], train["Target"])
+    predictions = model.predict(test[PREDICTION_FEATURE_COLS])
+
+    model_accuracy = accuracy_score(test["Target"], predictions)
+    pct_days_up = test["Target"].mean()
+    # "Always predict up" only looks smart when most test days actually were
+    # up (or, symmetrically, down) -- its real accuracy is whichever class was
+    # more common in that specific window, not a fixed number.
+    always_up_accuracy = max(pct_days_up, 1 - pct_days_up)
+
+    # labels=[0, 1] fixes the layout to [[TN, FP], [FN, TP]] (row = actual
+    # Down/Up, column = predicted Down/Up) -- unpacked here once so both the
+    # heatmap and the AI-insights facts list read named counts, not raw
+    # matrix indices.
+    cm = confusion_matrix(test["Target"], predictions, labels=[0, 1])
+    true_negatives, false_positives = cm[0]
+    false_negatives, true_positives = cm[1]
+
+    return {
+        "model_accuracy": model_accuracy,
+        "coin_flip_accuracy": 0.5,
+        "always_up_accuracy": always_up_accuracy,
+        "pct_days_up": pct_days_up,
+        "confusion_matrix": cm,
+        "true_positives": int(true_positives),
+        "true_negatives": int(true_negatives),
+        "false_positives": int(false_positives),
+        "false_negatives": int(false_negatives),
+        "test_days": len(test),
+        "train_days": len(train),
+    }
+
+
+PREDICTION_PROMPT_TEMPLATE = """You are a patient finance tutor explaining the result of a prediction experiment to a student, in plain English. You are NOT a financial advisor: never claim a real trading edge exists, never say something is a "good" or "bad" time to invest, and never suggest a trade or strategy.
+
+Using ONLY the facts given below, write exactly 3 insights as JSON.
+
+Formatting rule (critical): every number you mention MUST be copied character-for-character from the "value" fields below (same %, same counts, same decimal places). Never round, abbreviate, or recompute a number yourself.
+
+Output shape: {{"insights": [{{"headline": "...", "detail": "..."}}, ...]}}
+- "headline": 2-5 words summarizing the insight.
+- "detail": ONE plain-English sentence, 15-35 words.
+- One insight must state plainly whether the model beat both baselines, one of them, or neither -- using only the "Did the Model Beat..." facts and the accuracy numbers given, never recomputed or guessed at.
+- One insight must explain, in simple age-appropriate terms, WHY beating these baselines is hard: if a pattern like this reliably worked, people would already be trading on it until that trading itself made the pattern disappear (the "efficient markets" idea) -- explain the idea plainly, don't just name-drop the term.
+- One insight must cover what this result does and doesn't prove: NEVER claim a real, repeatable trading edge was found even if the model beat both baselines here -- one company and a small test window is not proof of anything repeatable. If the model did NOT clear the baselines, frame that plainly as a legitimate, useful finding about how hard this problem is, not as a failure.
+- Never suggest a trade, a strategy, or that this result predicts future performance.
+- Ground everything only in the numbers given -- never invent a cause not in the data.
+- Plain text only: no markdown, no backticks, no bold/italic asterisks, no code formatting.
+
+Facts:
+{facts}
+"""
+
+
+@st.cache_data(show_spinner=False)
+def generate_prediction_insights(facts_json: str):
+    prompt = PREDICTION_PROMPT_TEMPLATE.format(facts=facts_json)
+    return parse_insights(call_llm_json(prompt, temperature=0.4, max_tokens=600))
+
+
+def render_prediction_experiment_dashboard():
+    st.header("The Prediction Experiment")
+    st.caption(
+        "An honest test: can a Random Forest predict whether a stock closes UP or DOWN tomorrow, "
+        "using only that stock's own recent price behavior? Trained and evaluated on one ticker at a time."
+    )
+    st.info(":material/school: **Educational simulation -- not investment advice.** This tests a modeling idea; it does not recommend any trade.")
+
+    ticker_name = st.selectbox("Company", list(STOCK_TICKERS.keys()), index=0, key="prediction_ticker")
+    ticker = STOCK_TICKERS[ticker_name]
+
+    hist_check = load_stock_history(ticker)
+    if hist_check.empty:
+        st.error(f"Couldn't load live data for {ticker} right now -- try again in a moment.")
+        return
+
+    results = build_prediction_experiment(ticker)
+
+    st.subheader("Accuracy vs. Baselines")
+    col1, col2, col3 = st.columns(3)
+    col1.metric(":material/model_training: Model Accuracy", fmt_pct(results["model_accuracy"] * 100), border=True)
+    col2.metric(":material/casino: Coin Flip", fmt_pct(results["coin_flip_accuracy"] * 100), border=True)
+    col3.metric(":material/trending_up: Always Predict Up", fmt_pct(results["always_up_accuracy"] * 100), border=True)
+    st.caption(
+        f"\"Always predict up\" scores {fmt_pct(results['always_up_accuracy'] * 100)} here because "
+        f"{fmt_pct(results['pct_days_up'] * 100)} of the {results['test_days']} test days were actually up days -- "
+        f"not because it's smart, just because one direction happened to be more common in this window."
+    )
+
+    st.markdown("**Confusion Matrix**")
+    cm = results["confusion_matrix"]
+    # Same hand-styled heatmap approach as Churn Radar's confusion matrix --
+    # a heatmap doesn't fit style_bar_chart/style_trend_chart's shape (both
+    # assume one value axis against one category/time axis), so this reuses
+    # the same tokens (palette, ink, transparent background) directly instead.
+    fig_cm = go.Figure(
+        data=go.Heatmap(
+            z=cm,
+            x=["Predicted Down", "Predicted Up"],
+            y=["Actual Down", "Actual Up"],
+            colorscale=[[0, "rgba(0,0,0,0)"], [1, chart_palette[0]]],
+            text=cm,
+            texttemplate="%{text}",
+            textfont=dict(size=22, color=secondary_ink),
+            showscale=False,
+            xgap=3,
+            ygap=3,
+        )
+    )
+    fig_cm.update_layout(
+        font=dict(size=13, color=secondary_ink),
+        xaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False),
+        yaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False, autorange="reversed"),
+        margin=dict(t=20),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_cm, use_container_width=True)
+    st.caption("Rows are what actually happened, columns are what the model predicted.")
+
+    st.subheader("What This Does and Doesn't Show")
+
+    model_beat_coin_flip = results["model_accuracy"] > results["coin_flip_accuracy"]
+    model_beat_always_up = results["model_accuracy"] > results["always_up_accuracy"]
+
+    # Same "pre-computed facts, not raw numbers" approach as the Business and
+    # Stock sections: the model already knows whether it beat each baseline
+    # (Python did the comparison), so the LLM only has to explain that
+    # outcome in plain English, never recompute or guess at it.
+    facts = [
+        {"label": "Company", "value": ticker_name},
+        {"label": "Test Window Size", "value": f"{results['test_days']} trading days"},
+        {"label": "Model Accuracy", "value": fmt_pct(results["model_accuracy"] * 100)},
+        {"label": "Coin Flip Baseline", "value": fmt_pct(results["coin_flip_accuracy"] * 100)},
+        {"label": "Always-Predict-Up Baseline", "value": fmt_pct(results["always_up_accuracy"] * 100)},
+        {"label": "Did the Model Beat the Coin Flip Baseline", "value": "Yes" if model_beat_coin_flip else "No"},
+        {"label": "Did the Model Beat the Always-Predict-Up Baseline", "value": "Yes" if model_beat_always_up else "No"},
+        {"label": "True Positives (Predicted Up, Was Actually Up)", "value": str(results["true_positives"])},
+        {"label": "True Negatives (Predicted Down, Was Actually Down)", "value": str(results["true_negatives"])},
+        {"label": "False Positives (Predicted Up, Was Actually Down)", "value": str(results["false_positives"])},
+        {"label": "False Negatives (Predicted Down, Was Actually Up)", "value": str(results["false_negatives"])},
+    ]
+    # Sort keys so the JSON string is stable for a given result -- this
+    # string is the cache key below, so switching tickers and switching back
+    # reuses the cached call instead of re-hitting the API.
+    facts_json = json.dumps(facts, sort_keys=True)
+
+    try:
+        with st.spinner("Generating insights..."):
+            ai_insights = generate_prediction_insights(facts_json)
+        cols = st.columns(len(ai_insights))
+        for i, (col, insight) in enumerate(zip(cols, ai_insights)):
+            render_insight_card(col, insight, "Prediction Insight", i)
+    except Exception as e:
+        st.error(f"Couldn't generate AI insights right now: {e}")
+
+
+# =============================================================================
+# Tabs -- all dashboards live in this one app, one script, one file.
+# =============================================================================
+
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    [
+        ":material/store: Business Performance",
+        ":material/candlestick_chart: Stock Market",
+        ":material/radar: Churn Radar",
+        ":material/timeline: Sales Forecast",
+        ":material/psychology: Prediction Experiment",
+    ]
+)
 
 with tab1:
     render_business_dashboard()
 
 with tab2:
     render_stock_dashboard()
+
+with tab3:
+    render_churn_radar_dashboard()
+
+with tab4:
+    render_sales_forecast_dashboard()
+
+with tab5:
+    render_prediction_experiment_dashboard()
