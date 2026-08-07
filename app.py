@@ -34,6 +34,49 @@ st.set_page_config(page_title="Performance Dashboards", layout="wide")
 
 st.title("Performance Dashboards")
 
+# --- Global visual overhaul ---
+# One global stylesheet, injected once, instead of scattering ad-hoc CSS
+# through every tab -- keeps typography/spacing on the same scale everywhere.
+# Targets only stable, documented data-testid hooks and semantic heading/
+# paragraph tags -- never Streamlit's internal emotion-cache class names,
+# which are implementation details that can change between versions.
+st.html("""<style>
+/* Headings -- noticeably bigger than Streamlit's defaults so each tab reads
+   like a real dashboard title, not a markdown document. Scoped to the main
+   content area so the sidebar filter panel keeps its compact proportions. */
+[data-testid="stMain"] h1 { font-size: 3.6rem !important; font-weight: 800 !important; letter-spacing: -0.01em; }
+[data-testid="stMain"] h2 { font-size: 2.75rem !important; font-weight: 700 !important; margin-top: 0.75rem !important; }
+[data-testid="stMain"] h3 { font-size: 2.05rem !important; font-weight: 700 !important; margin-top: 1.75rem !important; margin-bottom: 0.75rem !important; }
+
+/* Body copy and captions -- one notch up across the board. */
+[data-testid="stMain"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stMain"] [data-testid="stMarkdownContainer"] li {
+    font-size: 1.05rem !important;
+    line-height: 1.6 !important;
+}
+[data-testid="stMain"] [data-testid="stCaptionContainer"] p {
+    font-size: 0.95rem !important;
+}
+
+/* KPI metric cards -- the big number is the whole point, make it dominant. */
+[data-testid="stMetricValue"] p { font-size: 2.6rem !important; font-weight: 700 !important; }
+[data-testid="stMetricLabel"] p { font-size: 1.05rem !important; font-weight: 600 !important; }
+
+/* Buttons -- bigger click targets and text, a "real dashboard" feel instead
+   of a compact form control. Applies to every button (Generate Minutes,
+   Use Sample Notes, Refresh Live Data, etc.), primary or secondary. */
+[data-testid="stMain"] .stButton button {
+    font-size: 1.05rem !important;
+    padding: 0.65rem 1.4rem !important;
+}
+
+/* Text inputs/areas -- readable while typing, not just after submitting. */
+[data-testid="stMain"] textarea,
+[data-testid="stMain"] input {
+    font-size: 1.05rem !important;
+}
+</style>""")
+
 # =============================================================================
 # Shared helpers -- used by BOTH the Business Performance tab and the Stock
 # Market tab, so formatting and the AI-insights plumbing stay consistent
@@ -174,20 +217,20 @@ def style_trend_chart(fig, show_legend, x_title="Month", y_title="Sales", y_tick
     # above the plot so it doesn't cover any lines. Shared by every line chart
     # in both tabs; the y_* params are what let the same function format a
     # sales-dollar axis, a price-dollar axis, and a signed-percent axis.
-    fig.update_traces(line=dict(width=2), marker=dict(size=8))
+    fig.update_traces(line=dict(width=3), marker=dict(size=9))
     fig.update_layout(
-        font=dict(size=13, color=secondary_ink),
-        title=dict(font=dict(size=18)),
+        font=dict(size=15, color=secondary_ink),
+        title=dict(font=dict(size=24)),
         xaxis=dict(
-            title=dict(text=x_title, font=dict(size=15)),
-            tickfont=dict(size=13, color=muted_ink),
+            title=dict(text=x_title, font=dict(size=17)),
+            tickfont=dict(size=15, color=muted_ink),
             showgrid=False,
             showline=True,
             linecolor=axis_line_color,
         ),
         yaxis=dict(
-            title=dict(text=y_title, font=dict(size=15)),
-            tickfont=dict(size=13, color=muted_ink),
+            title=dict(text=y_title, font=dict(size=17)),
+            tickfont=dict(size=15, color=muted_ink),
             tickprefix=y_tickprefix,
             ticksuffix=y_ticksuffix,
             tickformat=y_tickformat,
@@ -200,9 +243,10 @@ def style_trend_chart(fig, show_legend, x_title="Month", y_title="Sales", y_tick
             showline=False,
         ),
         showlegend=show_legend,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=13), title=None),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=15), title=None),
         hovermode="x unified",
         margin=dict(t=60),
+        height=520,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -219,12 +263,12 @@ def style_bar_chart(fig, y_title, y_tickprefix="$", y_tickformat=",.0f"):
     # chart (e.g. a 0-1 feature-importance score).
     fig.update_traces(marker_color=single_line_color)
     fig.update_layout(
-        font=dict(size=13, color=secondary_ink),
-        title=dict(font=dict(size=18)),
-        xaxis=dict(title=dict(font=dict(size=15)), tickfont=dict(size=13, color=muted_ink), showgrid=False, showline=True, linecolor=axis_line_color),
+        font=dict(size=15, color=secondary_ink),
+        title=dict(font=dict(size=24)),
+        xaxis=dict(title=dict(font=dict(size=17)), tickfont=dict(size=15, color=muted_ink), showgrid=False, showline=True, linecolor=axis_line_color),
         yaxis=dict(
-            title=dict(text=y_title, font=dict(size=15)),
-            tickfont=dict(size=13, color=muted_ink),
+            title=dict(text=y_title, font=dict(size=17)),
+            tickfont=dict(size=15, color=muted_ink),
             tickprefix=y_tickprefix,
             tickformat=y_tickformat,
             showgrid=True,
@@ -235,6 +279,7 @@ def style_bar_chart(fig, y_title, y_tickprefix="$", y_tickformat=",.0f"):
         ),
         showlegend=False,
         margin=dict(t=60),
+        height=460,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -280,7 +325,7 @@ def infer_insight_tone(headline: str, detail: str) -> str:
     return "neutral"
 
 
-def render_insight_card(col, insight: dict, eyebrow: str, index: int):
+def render_insight_card(col, insight: dict, eyebrow: str, index: int, emphasize: bool = False):
     """Render one AI-generated insight as a tone-colored card. Still a real
     st.container(border=True) -- Streamlit doesn't expose a border-color
     param, so the colored left accent + tint comes from a tiny scoped
@@ -289,17 +334,54 @@ def render_insight_card(col, insight: dict, eyebrow: str, index: int):
     st.html right before the container it styles. color-mix(...,transparent)
     keeps the tint subtle and correct on both themes without hardcoding two
     separate background colors.
+
+    emphasize=True renders a larger, more prominent version of the exact
+    same card (bigger padding/type) for the one spot in the app that wants
+    a single standout card (AI Business Writer's "Why This Matters") -- same
+    markup and tone logic, just bigger, not a second card implementation.
     """
     tone = infer_insight_tone(insight["headline"], insight["detail"])
     tone_color = chart_palette[INSIGHT_TONE_PALETTE_SLOT[tone]]
     key = f"insight-{eyebrow.lower().replace(' ', '-')}-{index}"
     tint_pct = 14 if is_dark_theme else 8  # a flat tint reads lighter on a dark surface, so it gets a bit more
 
+    pad = "32px" if emphasize else "24px"
+    border_width = "9px" if emphasize else "7px"
+    headline_size = "2rem" if emphasize else "1.65rem"
+    icon_box = "2.6rem" if emphasize else "2.1rem"
+    icon_font = "1.6rem" if emphasize else "1.3rem"
+    detail_size = "1.2rem" if emphasize else "1.05rem"
+
     with col:
         st.html(f"""<style>
 .st-key-{key} {{
-    border-left: 4px solid {tone_color} !important;
+    padding: {pad} !important;
+    border-left: {border_width} solid {tone_color} !important;
     background: color-mix(in srgb, {tone_color} {tint_pct}%, transparent) !important;
+}}
+.st-key-{key} h5 {{
+    font-size: {headline_size} !important;
+    font-weight: 800 !important;
+    line-height: 1.3 !important;
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.75rem !important;
+}}
+.st-key-{key} h5 span[role="img"] {{
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: {icon_box};
+    height: {icon_box};
+    font-size: {icon_font} !important;
+    color: {tone_color};
+    background: color-mix(in srgb, {tone_color} 22%, transparent);
+    border-radius: 50%;
+    margin-right: 0.55rem;
+    vertical-align: middle;
+}}
+.st-key-{key} [data-testid="stMarkdownContainer"] p {{
+    font-size: {detail_size} !important;
+    margin-top: 0.35rem !important;
 }}
 </style>""")
         with st.container(border=True, key=key):
@@ -428,7 +510,7 @@ def render_business_dashboard():
     orders_delta = pct_delta(total_orders, prev_orders)
     margin_delta = (profit_margin - prev_margin) if prev_revenue else None  # percentage points, not %-of-%
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4, gap="large")
     # st.metric renders a label, a big number, and an optional delta line below it --
     # border=True gives the card outline natively, and delta_description adds the
     # small muted "vs prior period" caption next to the colored delta arrow.
@@ -438,6 +520,7 @@ def render_business_dashboard():
         delta=f"{revenue_delta:+.1f}%" if revenue_delta is not None else None,
         delta_description="vs prior period" if revenue_delta is not None else None,
         border=True,
+        height=140,
     )
     col2.metric(
         ":material/trending_up: Profit",
@@ -445,6 +528,7 @@ def render_business_dashboard():
         delta=f"{profit_delta:+.1f}%" if profit_delta is not None else None,
         delta_description="vs prior period" if profit_delta is not None else None,
         border=True,
+        height=140,
     )
     col3.metric(
         ":material/receipt_long: Orders",
@@ -452,6 +536,7 @@ def render_business_dashboard():
         delta=f"{orders_delta:+.1f}%" if orders_delta is not None else None,
         delta_description="vs prior period" if orders_delta is not None else None,
         border=True,
+        height=140,
     )
     col4.metric(
         ":material/percent: Profit Margin",
@@ -459,6 +544,7 @@ def render_business_dashboard():
         delta=f"{margin_delta:+.1f} pts" if margin_delta is not None else None,
         delta_description="vs prior period" if margin_delta is not None else None,
         border=True,
+        height=140,
     )
 
     st.subheader("Top 5 Sales by Profit")
@@ -516,7 +602,7 @@ def render_business_dashboard():
 
     st.plotly_chart(fig_trend, use_container_width=True)
 
-    chart_col1, chart_col2, chart_col3 = st.columns(3)
+    chart_col1, chart_col2, chart_col3 = st.columns(3, gap="large")
 
     revenue_by_category = filtered_df.groupby("Category", as_index=False).agg(Sales=("Sales", "sum"), Profit=("Profit", "sum")).sort_values("Sales", ascending=False)
     fig_category = px.bar(revenue_by_category, x="Category", y="Sales", title="Revenue by Category")
@@ -535,7 +621,7 @@ def render_business_dashboard():
     # "Top 5 Sales by Profit" table above which ranks individual order lines --
     # this answers "which products/customers matter most overall" instead.
     st.subheader("Top Performers")
-    perf_col1, perf_col2 = st.columns(2)
+    perf_col1, perf_col2 = st.columns(2, gap="large")
 
     top_products = (
         filtered_df.groupby("Product Name", as_index=False).agg(Sales=("Sales", "sum"), Profit=("Profit", "sum")).sort_values("Sales", ascending=False).head(5).reset_index(drop=True)
@@ -669,7 +755,7 @@ Facts:
     try:
         with st.spinner("Generating insights..."):
             ai_insights = generate_business_insights(facts_json)
-        cols = st.columns(len(ai_insights))
+        cols = st.columns(len(ai_insights), gap="large")
         for i, (col, insight) in enumerate(zip(cols, ai_insights)):
             render_insight_card(col, insight, "Business Insight", i)
     except Exception as e:
@@ -820,7 +906,7 @@ def render_stock_ai_insights(facts: list):
     try:
         with st.spinner("Generating insights..."):
             ai_insights = generate_stock_insights(facts_json)
-        cols = st.columns(len(ai_insights))
+        cols = st.columns(len(ai_insights), gap="large")
         for i, (col, insight) in enumerate(zip(cols, ai_insights)):
             render_insight_card(col, insight, "Market Insight", i)
     except Exception as e:
@@ -868,13 +954,14 @@ def render_single_stock_view(period_label, period_days):
     hist_window = slice_to_period(hist_full, period_days)
     kpis = compute_stock_kpis(hist_full, hist_window)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4, gap="large")
     col1.metric(
         ":material/payments: Price",
         fmt_price(kpis["price"]),
         delta=fmt_change_pct(kpis["daily_change_pct"]),
         delta_description="vs previous close",
         border=True,
+        height=140,
     )
     col2.metric(
         ":material/trending_up: Daily Change",
@@ -882,6 +969,7 @@ def render_single_stock_view(period_label, period_days):
         delta=fmt_change_pct(kpis["daily_change_pct"]),
         delta_description="vs previous close",
         border=True,
+        height=140,
     )
     col3.metric(
         ":material/query_stats: Period Change",
@@ -889,8 +977,9 @@ def render_single_stock_view(period_label, period_days):
         delta=fmt_change_pct(kpis["period_change_pct"]),
         delta_description=f"over {period_label}",
         border=True,
+        height=140,
     )
-    col4.metric(":material/candlestick_chart: Volatility (Annualized)", fmt_pct(kpis["volatility_annualized"]), border=True)
+    col4.metric(":material/candlestick_chart: Volatility (Annualized)", fmt_pct(kpis["volatility_annualized"]), border=True, height=140)
 
     st.plotly_chart(render_price_chart(hist_window, f"{ticker_name} Price with Moving Averages"), use_container_width=True)
 
@@ -930,11 +1019,11 @@ def render_compare_stocks_view(period_label, period_days):
     kpis_a = compute_stock_kpis(hist_a_full, hist_a)
     kpis_b = compute_stock_kpis(hist_b_full, hist_b)
 
-    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
-    kpi_col1.metric(f":material/payments: {ticker_a} Price", fmt_price(kpis_a["price"]), delta=fmt_change_pct(kpis_a["period_change_pct"]), delta_description=f"over {period_label}", border=True)
-    kpi_col2.metric(f":material/payments: {ticker_b} Price", fmt_price(kpis_b["price"]), delta=fmt_change_pct(kpis_b["period_change_pct"]), delta_description=f"over {period_label}", border=True)
-    kpi_col3.metric(f":material/trending_up: {ticker_a} Daily Change", fmt_change_pct(kpis_a["daily_change_pct"]), delta=fmt_change_pct(kpis_a["daily_change_pct"]), delta_description="vs previous close", border=True)
-    kpi_col4.metric(f":material/trending_up: {ticker_b} Daily Change", fmt_change_pct(kpis_b["daily_change_pct"]), delta=fmt_change_pct(kpis_b["daily_change_pct"]), delta_description="vs previous close", border=True)
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4, gap="large")
+    kpi_col1.metric(f":material/payments: {ticker_a} Price", fmt_price(kpis_a["price"]), delta=fmt_change_pct(kpis_a["period_change_pct"]), delta_description=f"over {period_label}", border=True, height=140)
+    kpi_col2.metric(f":material/payments: {ticker_b} Price", fmt_price(kpis_b["price"]), delta=fmt_change_pct(kpis_b["period_change_pct"]), delta_description=f"over {period_label}", border=True, height=140)
+    kpi_col3.metric(f":material/trending_up: {ticker_a} Daily Change", fmt_change_pct(kpis_a["daily_change_pct"]), delta=fmt_change_pct(kpis_a["daily_change_pct"]), delta_description="vs previous close", border=True, height=140)
+    kpi_col4.metric(f":material/trending_up: {ticker_b} Daily Change", fmt_change_pct(kpis_b["daily_change_pct"]), delta=fmt_change_pct(kpis_b["daily_change_pct"]), delta_description="vs previous close", border=True, height=140)
 
     # Two stocks at different price levels can't be overlaid as raw dollar
     # lines and mean anything -- a $300 stock moving $3 looks identical to a
@@ -1061,16 +1150,16 @@ def render_churn_radar_dashboard():
     results = train_churn_models(customers)
 
     st.subheader("Model Comparison")
-    model_col1, model_col2 = st.columns(2)
-    model_col1.metric(":material/account_tree: Decision Tree Accuracy", fmt_pct(results["dt_accuracy"] * 100), border=True)
-    model_col2.metric(":material/forest: Random Forest Accuracy", fmt_pct(results["rf_accuracy"] * 100), border=True)
+    model_col1, model_col2 = st.columns(2, gap="large")
+    model_col1.metric(":material/account_tree: Decision Tree Accuracy", fmt_pct(results["dt_accuracy"] * 100), border=True, height=140)
+    model_col2.metric(":material/forest: Random Forest Accuracy", fmt_pct(results["rf_accuracy"] * 100), border=True, height=140)
     st.caption(
         f"For context: always guessing \"not churned\" for every customer would score "
         f"{fmt_pct(results['baseline_accuracy'] * 100)} accuracy on this same test set -- a model "
         f"needs to clear that bar to be worth using, not just post a big-sounding number."
     )
 
-    chart_col1, chart_col2 = st.columns(2)
+    chart_col1, chart_col2 = st.columns(2, gap="large")
 
     with chart_col1:
         st.markdown("**Confusion Matrix (Random Forest)**")
@@ -1087,17 +1176,18 @@ def render_churn_radar_dashboard():
                 colorscale=[[0, "rgba(0,0,0,0)"], [1, chart_palette[0]]],
                 text=cm,
                 texttemplate="%{text}",
-                textfont=dict(size=22, color=secondary_ink),
+                textfont=dict(size=28, color=secondary_ink),
                 showscale=False,
                 xgap=3,
                 ygap=3,
             )
         )
         fig_cm.update_layout(
-            font=dict(size=13, color=secondary_ink),
-            xaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False),
-            yaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False, autorange="reversed"),
+            font=dict(size=15, color=secondary_ink),
+            xaxis=dict(tickfont=dict(size=15, color=muted_ink), showgrid=False),
+            yaxis=dict(tickfont=dict(size=15, color=muted_ink), showgrid=False, autorange="reversed"),
             margin=dict(t=20),
+            height=420,
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
         )
@@ -1186,9 +1276,9 @@ def render_sales_forecast_dashboard():
     test = results["test"]
     model_wins = results["model_mae"] < results["naive_mae"]
 
-    col1, col2 = st.columns(2)
-    col1.metric(":material/model_training: Model MAE", fmt_money(results["model_mae"]), border=True)
-    col2.metric(":material/rule: Naive Baseline MAE", fmt_money(results["naive_mae"]), border=True)
+    col1, col2 = st.columns(2, gap="large")
+    col1.metric(":material/model_training: Model MAE", fmt_money(results["model_mae"]), border=True, height=140)
+    col2.metric(":material/rule: Naive Baseline MAE", fmt_money(results["naive_mae"]), border=True, height=140)
 
     # MAE (mean absolute error) is in dollars, same units as sales -- lower is
     # better. Reported honestly either way: this dataset has a small number of
@@ -1336,10 +1426,10 @@ def render_prediction_experiment_dashboard():
     results = build_prediction_experiment(ticker)
 
     st.subheader("Accuracy vs. Baselines")
-    col1, col2, col3 = st.columns(3)
-    col1.metric(":material/model_training: Model Accuracy", fmt_pct(results["model_accuracy"] * 100), border=True)
-    col2.metric(":material/casino: Coin Flip", fmt_pct(results["coin_flip_accuracy"] * 100), border=True)
-    col3.metric(":material/trending_up: Always Predict Up", fmt_pct(results["always_up_accuracy"] * 100), border=True)
+    col1, col2, col3 = st.columns(3, gap="large")
+    col1.metric(":material/model_training: Model Accuracy", fmt_pct(results["model_accuracy"] * 100), border=True, height=140)
+    col2.metric(":material/casino: Coin Flip", fmt_pct(results["coin_flip_accuracy"] * 100), border=True, height=140)
+    col3.metric(":material/trending_up: Always Predict Up", fmt_pct(results["always_up_accuracy"] * 100), border=True, height=140)
     st.caption(
         f"\"Always predict up\" scores {fmt_pct(results['always_up_accuracy'] * 100)} here because "
         f"{fmt_pct(results['pct_days_up'] * 100)} of the {results['test_days']} test days were actually up days -- "
@@ -1360,17 +1450,18 @@ def render_prediction_experiment_dashboard():
             colorscale=[[0, "rgba(0,0,0,0)"], [1, chart_palette[0]]],
             text=cm,
             texttemplate="%{text}",
-            textfont=dict(size=22, color=secondary_ink),
+            textfont=dict(size=28, color=secondary_ink),
             showscale=False,
             xgap=3,
             ygap=3,
         )
     )
     fig_cm.update_layout(
-        font=dict(size=13, color=secondary_ink),
-        xaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False),
-        yaxis=dict(tickfont=dict(size=13, color=muted_ink), showgrid=False, autorange="reversed"),
+        font=dict(size=15, color=secondary_ink),
+        xaxis=dict(tickfont=dict(size=15, color=muted_ink), showgrid=False),
+        yaxis=dict(tickfont=dict(size=15, color=muted_ink), showgrid=False, autorange="reversed"),
         margin=dict(t=20),
+        height=420,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -1407,7 +1498,7 @@ def render_prediction_experiment_dashboard():
     try:
         with st.spinner("Generating insights..."):
             ai_insights = generate_prediction_insights(facts_json)
-        cols = st.columns(len(ai_insights))
+        cols = st.columns(len(ai_insights), gap="large")
         for i, (col, insight) in enumerate(zip(cols, ai_insights)):
             render_insight_card(col, insight, "Prediction Insight", i)
     except Exception as e:
@@ -1415,16 +1506,385 @@ def render_prediction_experiment_dashboard():
 
 
 # =============================================================================
+# AI Business Writer (tab 6)
+# =============================================================================
+
+SAMPLE_MEETING_NOTES = """Weekly sync 8/7 - product + eng
+
+- Sarah: Q3 numbers came in soft, revenue down 4% vs plan mostly bc of the West region slump. she wants a deep dive before the board meeting next Thursday, ASAP
+- talked about the new onboarding flow, Raj said beta is going ok, couple bug reports from testers around the payment step
+- Raj to fix payment step bug by end of week, high priority obviously since it's blocking beta signups
+- someone needs to update the pricing page copy, nobody volunteered, low priority for now
+- Priya raised the support ticket backlog again, still growing, she'll pull a report and send it out sometime next week
+- marketing wants launch date pushed back two weeks, doesn't affect eng directly right now
+- reminder: expense reports due end of month (not really actionable for this team)
+- Mike mentioned server costs crept up last month, wants someone to look into it, no rush
+"""
+
+MEETING_NOTES_PROMPT_TEMPLATE = """You are an efficient executive assistant turning raw, messy meeting notes into clean minutes. The reader was not in the meeting and needs to understand what happened and what to do next from your output alone.
+
+Using ONLY the meeting notes given below, produce STRICT JSON in this exact shape:
+{{"summary": "...", "minutes": ["...", "..."], "action_items": [{{"owner": "...", "task": "...", "priority": "High/Medium/Low"}}, ...]}}
+
+Formatting rule (critical): every name, number, date, and detail you mention MUST come directly from the notes below. Never invent a detail, a person, or an outcome that is not actually there.
+
+- "summary": 2-3 plain-English sentences describing what the meeting was about, grounded strictly in the notes -- no outside assumptions about the company, project, or people beyond what is written.
+- "minutes": a list of short bullet points covering what was actually discussed, in the order it comes up in the notes. Each bullet is a plain sentence or fragment, not a full paragraph.
+- "action_items": extract an action item whenever the notes imply follow-up work is needed -- check every line, not just ones phrased as "X to do Y". A request, a desire, or an ask tied to a named person counts too (e.g. "she wants a deep dive before Thursday" IS an action item, even though it is not phrased as a to-do). Never invent a task or an owner that is not there. If a named person clearly owns the follow-up -- they raised it and no one else is named to handle it -- use their name as "owner"; only set "owner" to exactly "Unassigned" when the notes genuinely do not name anyone who would own it. "priority" must be exactly "High", "Medium", or "Low" -- infer it from urgency language in the notes (e.g. "ASAP", "urgent", "by end of day" means High; a vague or open-ended task means Low); default to "Medium" if the notes do not suggest otherwise.
+- If the notes do not mention any concrete action items, return an empty list for "action_items" -- do not fabricate one just to fill the field.
+- Plain text only inside every JSON string value: no markdown, no backticks, no bold/italic asterisks, no bullet characters typed into the string itself.
+
+Meeting notes:
+{notes}
+"""
+
+
+def parse_meeting_minutes(raw_json: str) -> dict:
+    """Validator for the meeting-minutes JSON shape -- same spirit as
+    parse_insights() (pull out only the well-formed pieces, raise if the
+    whole thing is unusable) but for a different shape: one summary string,
+    a list of minute bullets, and a list of {owner, task, priority} action
+    items instead of a list of {headline, detail} insight cards.
+    """
+    data = json.loads(raw_json)
+    summary = strip_markdown(str(data.get("summary", "")).strip())
+    minutes = [strip_markdown(str(m).strip()) for m in data.get("minutes", []) if str(m).strip()]
+
+    action_items = []
+    for item in data.get("action_items", []):
+        if not isinstance(item, dict):
+            continue
+        task = strip_markdown(str(item.get("task", "")).strip())
+        if not task:
+            continue
+        owner = strip_markdown(str(item.get("owner", "")).strip()) or "Unassigned"
+        priority = str(item.get("priority", "")).strip().title()
+        if priority not in ("High", "Medium", "Low"):
+            priority = "Medium"
+        action_items.append({"Owner": owner, "Task": task, "Priority": priority})
+
+    if not summary and not minutes and not action_items:
+        raise ValueError("Model returned no usable meeting minutes.")
+    return {"summary": summary, "minutes": minutes, "action_items": action_items}
+
+
+@st.cache_data(show_spinner=False)
+def generate_meeting_minutes(notes_text: str) -> dict:
+    prompt = MEETING_NOTES_PROMPT_TEMPLATE.format(notes=notes_text)
+    return parse_meeting_minutes(call_llm_json(prompt, temperature=0.3, max_tokens=900))
+
+
+# Reuses the same {"insights": [{headline, detail}, ...]} shape as the other
+# three sections (just asked for exactly 1) so this can go straight through
+# the existing parse_insights() and render_insight_card() instead of a new
+# parser/renderer pair for a one-off card.
+MEETING_VALUE_PROMPT_TEMPLATE = """You are a productivity-focused assistant explaining the practical value of a set of AI-generated meeting minutes to the person about to use them. They already have the minutes in front of them -- your job is to name, in one sentence, why having this saved them time or gave them clarity, using the real numbers below.
+
+Using ONLY the facts given below, write exactly 1 insight as JSON.
+
+Formatting rule (critical): every number you mention MUST be copied character-for-character from the "value" fields below. Never round, invent, or recompute a number yourself.
+
+Output shape: {{"insights": [{{"headline": "...", "detail": "..."}}]}}
+- "headline": 2-5 words, punchy and scannable, built around an active verb -- never a vague noun like "Summary" or "Overview".
+- "detail": ONE short sentence, 15-25 words, plain English, naming the concrete time/clarity value of this pass -- e.g. how many action items got surfaced or how many owners were identified -- not a restatement of what the meeting was about.
+- If zero action items were extracted, the value is confirming nothing fell through the cracks -- say that plainly instead of forcing a false win.
+- Plain text only: no markdown, no backticks, no bold/italic asterisks.
+
+Facts:
+{facts}
+"""
+
+
+@st.cache_data(show_spinner=False)
+def generate_minutes_value_insight(facts_json: str) -> dict:
+    prompt = MEETING_VALUE_PROMPT_TEMPLATE.format(facts=facts_json)
+    return parse_insights(call_llm_json(prompt, temperature=0.4, max_tokens=300))[0]
+
+
+def render_business_writer_dashboard():
+    st.header("AI Business Writer")
+    st.caption("Turn raw, messy meeting notes into clean minutes and a ranked action-item list -- paste your notes below and let the model do the first pass.")
+
+    # --- Input zone ---
+    if st.button(":material/auto_awesome: Use Sample Notes", help="Fill the box below with example messy meeting notes, so you can try this without typing from scratch."):
+        st.session_state["meeting_notes_input"] = SAMPLE_MEETING_NOTES
+
+    # Scoped CSS targeting this text_area's own `.st-key-<key>` wrapper (the
+    # same mechanism render_insight_card uses for its card accent) -- bumps
+    # the type size a notch further than the app-wide input bump for
+    # readability while pasting/typing, since st.text_area has no native
+    # font-size param.
+    st.html("""<style>
+.st-key-meeting_notes_input textarea {
+    font-size: 1.15rem !important;
+    line-height: 1.55 !important;
+}
+</style>""")
+    notes_text = st.text_area(
+        "Paste raw meeting notes",
+        key="meeting_notes_input",
+        height=340,
+        placeholder="Paste messy, unstructured meeting notes here -- fragments, half-sentences, whatever you actually typed live during the meeting.",
+    )
+
+    generate_clicked = st.button(":material/summarize: Generate Minutes", type="primary", disabled=not notes_text.strip())
+
+    if generate_clicked:
+        try:
+            with st.spinner("Turning notes into minutes..."):
+                st.session_state["meeting_minutes_result"] = generate_meeting_minutes(notes_text)
+        except Exception as e:
+            st.session_state["meeting_minutes_result"] = None
+            st.error(f"Couldn't generate meeting minutes right now -- try again in a moment. ({e})")
+
+    result = st.session_state.get("meeting_minutes_result")
+    if not result:
+        return
+
+    # --- Output zone ---
+    st.divider()
+    st.caption(":material/smart_toy: AI-generated -- review before sending.")
+
+    num_action_items = len(result["action_items"])
+    num_high_priority = sum(1 for item in result["action_items"] if item["Priority"] == "High")
+    named_owners = {item["Owner"] for item in result["action_items"] if item["Owner"] != "Unassigned"}
+    value_facts = [
+        {"label": "Action Items Extracted", "value": str(num_action_items)},
+        {"label": "High Priority Action Items", "value": str(num_high_priority)},
+        {"label": "Named Owners Identified", "value": str(len(named_owners))},
+        {"label": "Discussion Points Captured", "value": str(len(result["minutes"]))},
+    ]
+    value_facts_json = json.dumps(value_facts, sort_keys=True)
+    try:
+        with st.spinner("Summarizing the impact..."):
+            value_insight = generate_minutes_value_insight(value_facts_json)
+        value_cols = st.columns(1)
+        render_insight_card(value_cols[0], value_insight, "Why This Matters", 0, emphasize=True)
+    except Exception as e:
+        st.error(f"Couldn't generate the impact summary right now: {e}")
+
+    # Uneven split -- the action items table needs enough width for three
+    # legible columns (Owner/Task/Priority), while the summary/minutes prose
+    # reads fine in a narrower column since it just wraps.
+    summary_col, action_items_col = st.columns([2, 3], gap="large")
+
+    with summary_col:
+        st.markdown("**Summary**")
+        # This is the centerpiece text on this page, so it gets a scoped CSS
+        # bump beyond the app-wide caption/body sizing -- same mechanism as
+        # the insight cards (a keyed container + a tiny scoped <style> block
+        # targeting its own `.st-key-<key>` wrapper).
+        st.html("""<style>
+.st-key-meeting_summary_box [data-testid="stAlertContainer"] {
+    padding: 28px !important;
+}
+.st-key-meeting_summary_box [data-testid="stAlertContainer"] p {
+    font-size: 1.25rem !important;
+    line-height: 1.6 !important;
+}
+</style>""")
+        with st.container(key="meeting_summary_box"):
+            st.info(result["summary"] or "No summary could be generated from these notes.")
+
+        st.markdown("**Minutes**")
+        if result["minutes"]:
+            st.markdown("\n".join(f"- {bullet}" for bullet in result["minutes"]))
+        else:
+            st.caption("No discussion points extracted from these notes.")
+
+    with action_items_col:
+        st.markdown("**Action Items**")
+        if result["action_items"]:
+            st.dataframe(
+                pd.DataFrame(result["action_items"]),
+                column_config={
+                    "Owner": st.column_config.TextColumn("Owner", width="small"),
+                    "Task": st.column_config.TextColumn("Task", width="medium"),
+                    "Priority": st.column_config.TextColumn("Priority", width="small"),
+                },
+                hide_index=True,
+                use_container_width=True,
+                # This table is the centerpiece of the demo -- taller rows
+                # than the default so it feels substantial, not a compact
+                # data grid.
+                row_height=52,
+            )
+        else:
+            st.caption("No action items found in these notes.")
+
+
+# =============================================================================
+# AI News Analyst (tab 7)
+# =============================================================================
+
+# Hardcoded, not a live RSS pull -- a fixed slate of realistic headlines is
+# more reliable for a live demo than depending on an external feed staying
+# up and returning sane content on stage. Spans every company already in
+# STOCK_TICKERS with a deliberate mix of positive/negative/neutral tone so
+# the sentiment classification below actually has something to differentiate.
+# No real quotes -- every headline here is invented.
+SAMPLE_HEADLINES = [
+    {"headline": "Apple Beats Quarterly Earnings Estimates on Strong iPhone Demand", "company": "Apple"},
+    {"headline": "Apple Sets Date for Fall Event to Unveil Next-Gen iPhone Lineup", "company": "Apple"},
+    {"headline": "Nike Cuts Full-Year Sales Forecast Amid Weak China Demand", "company": "Nike"},
+    {"headline": "Nike's New Performance Running Line Sees Strong Early Sell-Through", "company": "Nike"},
+    {"headline": "Tesla Recalls Thousands of Vehicles Over Software Glitch", "company": "Tesla"},
+    {"headline": "Tesla Quarterly Deliveries Top Analyst Expectations", "company": "Tesla"},
+    {"headline": "Disney's Latest Animated Release Tops Box Office on Opening Weekend", "company": "Disney"},
+    {"headline": "Disney Streaming Division Reports Wider-Than-Expected Losses", "company": "Disney"},
+    {"headline": "McDonald's Rolls Out New Value Menu Across US Locations", "company": "McDonald's"},
+    {"headline": "McDonald's Same-Store Sales Slip as Diners Pull Back on Spending", "company": "McDonald's"},
+    {"headline": "Microsoft Cloud Revenue Jumps as Enterprise AI Adoption Accelerates", "company": "Microsoft"},
+    {"headline": "Amazon Expands Same-Day Delivery to Dozens of New Cities", "company": "Amazon"},
+    {"headline": "Amazon Faces Regulatory Scrutiny Over Warehouse Labor Practices", "company": "Amazon"},
+    {"headline": "Coca-Cola Announces Executive Leadership Transition in Marketing", "company": "Coca-Cola"},
+    {"headline": "Netflix Adds More Subscribers Than Expected After Password-Sharing Crackdown", "company": "Netflix"},
+    {"headline": "Starbucks Same-Store Sales Decline for Third Straight Quarter", "company": "Starbucks"},
+]
+
+NEWS_SENTIMENT_PROMPT_TEMPLATE = """You are a financial news analyst classifying the tone of business headlines. Using ONLY the headlines given below, produce STRICT JSON in this exact shape:
+{{"headlines": [{{"headline": "...", "company": "...", "sentiment": "Positive/Negative/Neutral"}}, ...]}}
+
+Formatting rule (critical): copy "headline" and "company" character-for-character from the input below for every entry -- never reword, shorten, or invent a headline or company that is not in the input. The output list must have exactly as many entries as the input, covering every single headline given.
+
+- "sentiment" must be exactly one of "Positive", "Negative", or "Neutral" -- judge it from the headline's tone toward the company (beating estimates, a strong launch, or expansion is Positive; a miss, recall, decline, or controversy is Negative; a routine announcement with no clear upside or downside is Neutral).
+- Plain text only inside every JSON string value: no markdown, no backticks, no bold/italic asterisks.
+
+Headlines:
+{headlines}
+"""
+
+
+def parse_news_sentiment(raw_json: str) -> list:
+    """Validator for the sentiment-classification JSON shape -- same spirit as
+    parse_insights()/parse_meeting_minutes() (pull out only well-formed
+    entries, raise if the whole thing is unusable), for a {headline, company,
+    sentiment} shape instead.
+    """
+    data = json.loads(raw_json)
+    cleaned = []
+    for item in data.get("headlines", []):
+        if not isinstance(item, dict):
+            continue
+        headline = strip_markdown(str(item.get("headline", "")).strip())
+        company = strip_markdown(str(item.get("company", "")).strip())
+        if not headline or not company:
+            continue
+        sentiment = str(item.get("sentiment", "")).strip().title()
+        if sentiment not in ("Positive", "Negative", "Neutral"):
+            sentiment = "Neutral"
+        cleaned.append({"Company": company, "Headline": headline, "Sentiment": sentiment})
+    if not cleaned:
+        raise ValueError("Model returned no usable sentiment classifications.")
+    return cleaned
+
+
+@st.cache_data(show_spinner=False)
+def generate_news_sentiment(headlines_json: str) -> list:
+    prompt = NEWS_SENTIMENT_PROMPT_TEMPLATE.format(headlines=headlines_json)
+    return parse_news_sentiment(call_llm_json(prompt, temperature=0.2, max_tokens=1400))
+
+
+NEWS_SUMMARY_PROMPT_TEMPLATE = """You are a business news editor writing a short "Today in Business" digest. Using ONLY the headlines given below, produce STRICT JSON in this exact shape:
+{{"bullets": ["...", "...", "...", "...", "..."]}}
+
+Formatting rule (critical): every company name, number, and detail you mention MUST come directly from the headlines below. Never invent a detail, a company, or an outcome that is not actually there.
+
+- Return exactly 5 bullets, each ONE short, punchy sentence (12-22 words) built around an active verb, capturing a distinct, notable thread from today's headlines -- not a generic industry overview.
+- Prioritize headlines with the clearest business impact (an earnings beat/miss, a recall, a leadership change, a big expansion) over routine announcements.
+- Cover a spread of different companies across the 5 bullets where the headlines support it -- don't let one company dominate all 5 when others have notable news too.
+- Plain text only: no markdown, no backticks, no bold/italic asterisks, no bullet characters typed into the string itself.
+
+Headlines:
+{headlines}
+"""
+
+
+def parse_news_bullets(raw_json: str) -> list:
+    data = json.loads(raw_json)
+    bullets = [strip_markdown(str(b).strip()) for b in data.get("bullets", []) if str(b).strip()]
+    if not bullets:
+        raise ValueError("Model returned no usable summary bullets.")
+    return bullets[:5]
+
+
+@st.cache_data(show_spinner=False)
+def generate_news_summary(headlines_json: str) -> list:
+    prompt = NEWS_SUMMARY_PROMPT_TEMPLATE.format(headlines=headlines_json)
+    return parse_news_bullets(call_llm_json(prompt, temperature=0.4, max_tokens=500))
+
+
+# Sentiment -> chart_palette slot. Slot 2 (aqua/green) and slot 3 (amber) are
+# already "positive"/"caution" elsewhere in this file (INSIGHT_TONE_PALETTE_
+# SLOT above); slot 1 (orange) is otherwise unused by that system, and reads
+# as the closest warm/alert hue this exact 4-color palette has, so it becomes
+# "Negative" here rather than introducing a new red that isn't in the palette.
+NEWS_SENTIMENT_COLOR = {"Positive": chart_palette[2], "Negative": chart_palette[1]}
+
+
+def _sentiment_badge_style(value: str) -> str:
+    # Cell-level styling for the Sentiment column via a pandas Styler --
+    # st.dataframe honors background-color/color from a Styler, which is what
+    # gives each row a colored badge/tag look without a custom column type.
+    # rgba() (not color-mix()) because the underlying cell renderer parses
+    # this string itself rather than handing it to the browser's CSS engine.
+    tone_color = NEWS_SENTIMENT_COLOR.get(value, muted_ink)
+    r, g, b = int(tone_color[1:3], 16), int(tone_color[3:5], 16), int(tone_color[5:7], 16)
+    tint_alpha = 0.28 if is_dark_theme else 0.16
+    return f"background-color: rgba({r}, {g}, {b}, {tint_alpha}); color: {tone_color}; font-weight: 700;"
+
+
+def render_news_analyst_dashboard():
+    st.header("AI News Analyst")
+    st.caption("A fixed slate of realistic business headlines -- classified for sentiment and summarized by the same LLM pipeline as the rest of this app, no live news feed required for a reliable demo.")
+    st.caption(":material/candlestick_chart: Pick a company on the Stock Market tab to see its price chart next to today's sentiment here.")
+
+    headlines_json = json.dumps(SAMPLE_HEADLINES, sort_keys=True)
+
+    st.subheader("Sentiment Scoreboard")
+    try:
+        with st.spinner("Classifying headline sentiment..."):
+            sentiment_rows = generate_news_sentiment(headlines_json)
+        sentiment_df = pd.DataFrame(sentiment_rows).sort_values(["Company", "Headline"]).reset_index(drop=True)
+        st.dataframe(
+            sentiment_df.style.map(_sentiment_badge_style, subset=["Sentiment"]),
+            column_config={
+                "Company": st.column_config.TextColumn("Company", width="small"),
+                "Headline": st.column_config.TextColumn("Headline", width="large"),
+                "Sentiment": st.column_config.TextColumn("Sentiment", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            row_height=48,
+        )
+    except Exception as e:
+        st.error(f"Couldn't classify headline sentiment right now: {e}")
+
+    st.divider()
+
+    st.subheader("Today in Business -- 5 Bullets")
+    try:
+        with st.spinner("Summarizing today's business narrative..."):
+            bullets = generate_news_summary(headlines_json)
+        with st.container(border=True):
+            st.markdown("\n".join(f"- {bullet}" for bullet in bullets))
+    except Exception as e:
+        st.error(f"Couldn't generate today's summary right now: {e}")
+
+
+# =============================================================================
 # Tabs -- all dashboards live in this one app, one script, one file.
 # =============================================================================
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
     [
         ":material/store: Business Performance",
         ":material/candlestick_chart: Stock Market",
         ":material/radar: Churn Radar",
         ":material/timeline: Sales Forecast",
         ":material/psychology: Prediction Experiment",
+        ":material/edit_note: AI Business Writer",
+        ":material/newspaper: AI News Analyst",
     ]
 )
 
@@ -1442,3 +1902,9 @@ with tab4:
 
 with tab5:
     render_prediction_experiment_dashboard()
+
+with tab6:
+    render_business_writer_dashboard()
+
+with tab7:
+    render_news_analyst_dashboard()
